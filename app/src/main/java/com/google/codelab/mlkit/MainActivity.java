@@ -108,9 +108,9 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
         mTextButton = findViewById(R.id.button_text);
         mFaceButton = findViewById(R.id.button_face);
 
-        String path = (String) Environment.getExternalStorageDirectory().getAbsolutePath();
+
         mRetriever = new MediaMetadataRetriever();
-        mRetriever.setDataSource(path+"/Download/wr.mp4");
+
         mCurFrame = 1;
 
         mGraphicOverlay = findViewById(R.id.graphic_overlay);
@@ -127,10 +127,11 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
             }
         });
         Spinner dropdown = findViewById(R.id.spinner);
-        String[] items = new String[]{"PubG", "WildRift"};
-        mMaskSpec = new Integer[2][4];
+        String[] items = new String[]{"PubG", "WildRift","WildRift 720p"};
+        mMaskSpec = new Integer[3][4];
         mMaskSpec[0] = new Integer[]{80, 1032, 72, 48};
         mMaskSpec[1] = new Integer[]{1540, 140, 72, 48};
+        mMaskSpec[2] = new Integer[]{1026, 89, 48, 35};
         ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout
                 .simple_spinner_dropdown_item, items);
         dropdown.setAdapter(adapter);
@@ -162,6 +163,8 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
 
     private void runVideoProcessing(){
 
+        String path = (String) Environment.getExternalStorageDirectory().getAbsolutePath();
+        mRetriever.setDataSource(path+"/Download/wr.mp4");
         mCurFrame = 1;
         final Handler mHandler = new Handler();
         mHandler.postDelayed(new Runnable() {
@@ -209,18 +212,22 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
     }
 
     private void processTextRecognitionResult(Text texts) {
-        Log.e("madmachine", "Processing results");
         List<Text.TextBlock> blocks = texts.getTextBlocks();
         for ( int i = 0; i < blocks.size();i++){
-            Log.e("madmachine", blocks.get(i).getText());
 
             // blocks.get(i).getText().indexOf("m5") > 0
 
             if(blocks.get(i).getText().indexOf("ms") > 0 ){
                 //Toast.makeText(getApplicationContext(),blocks.get(i).getText(),Toast.LENGTH_SHORT).show();
+                try{
+                    Log.e("madmachine", blocks.get(i).getText().substring(0,blocks.get(i).getText().length()-2));
+                } catch(Exception e){
+                    Log.e("madmachine", "caught exc: " + blocks.get(i).getText());
+                }
                 mPingTextView.setText("Detected Ping: "+ blocks.get(i).getText());
             }
         }
+
         if (blocks.size() == 0) {
             //showToast("No text found");
             return;
@@ -345,6 +352,10 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
 //                break;
             case 1:
                 mSelectedImage = getBitmapFromAsset(this, "snap_hd.png");
+                break;
+            case 2:
+                //mSelectedImage = getBitmapFromAsset(this, "snap_hd.png");
+                mSelectedImage = getBitmapFromAsset(this, "snap_sd.png");
                 break;
 
         }
