@@ -18,10 +18,14 @@ import android.content.Context;
 import android.content.res.AssetManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.media.MediaMetadataRetriever;
 import android.os.Bundle;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 
+import android.os.Environment;
+import android.os.Handler;
+import android.util.Log;
 import android.util.Pair;
 import android.view.View;
 import android.widget.AdapterView;
@@ -29,6 +33,7 @@ import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.Spinner;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import com.google.android.gms.tasks.OnFailureListener;
@@ -53,6 +58,8 @@ import java.util.PriorityQueue;
 public class MainActivity extends AppCompatActivity implements AdapterView.OnItemSelectedListener {
     private static final String TAG = "MainActivity";
     private ImageView mImageView;
+    private ImageView mRefImageView;
+    private TextView mPingTextView;
     private Button mTextButton;
     private Button mFaceButton;
     private Bitmap mSelectedImage;
@@ -62,6 +69,10 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
     // Max height (portrait mode)
     private Integer mImageMaxHeight;
 
+    private Integer mMaskSpec[][];
+    private Integer mSelectedGame;
+    private MediaMetadataRetriever mRetriever;
+    private int mCurFrame = 1;
     /**
      * Number of results to show in the UI.
      */
@@ -90,9 +101,17 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
         setContentView(R.layout.activity_main);
 
         mImageView = findViewById(R.id.image_view);
+        mRefImageView = findViewById(R.id.image_view_ref);
+
+        mPingTextView = findViewById(R.id.text_view_ping);
 
         mTextButton = findViewById(R.id.button_text);
         mFaceButton = findViewById(R.id.button_face);
+
+        String path = (String) Environment.getExternalStorageDirectory().getAbsolutePath();
+        mRetriever = new MediaMetadataRetriever();
+        mRetriever.setDataSource(path+"/Download/wr.mp4");
+        mCurFrame = 1;
 
         mGraphicOverlay = findViewById(R.id.graphic_overlay);
         mTextButton.setOnClickListener(new View.OnClickListener() {
@@ -104,16 +123,66 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
         mFaceButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                runFaceContourDetection();
+                runVideoProcessing();
             }
         });
         Spinner dropdown = findViewById(R.id.spinner);
-        String[] items = new String[]{"Test Image 1 (Text)", "Test Image 2 (Face)"};
+        String[] items = new String[]{"PubG", "WildRift"};
+        mMaskSpec = new Integer[2][4];
+        mMaskSpec[0] = new Integer[]{80, 1032, 72, 48};
+        mMaskSpec[1] = new Integer[]{1540, 140, 72, 48};
         ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout
                 .simple_spinner_dropdown_item, items);
         dropdown.setAdapter(adapter);
         dropdown.setOnItemSelectedListener(this);
     }
+
+    private Bitmap scaleAndSetBitmap(Bitmap b, ImageView im){
+        Pair<Integer, Integer> targetedSize = getTargetedWidthHeight();
+
+        int targetWidth = targetedSize.first;
+        int maxHeight = targetedSize.second;
+
+        // Determine how much to scale down the image
+        float scaleFactor =
+                Math.max(
+                        (float) b.getWidth() / (float) targetWidth,
+                        (float) b.getHeight() / (float) maxHeight);
+
+        Bitmap resizedBitmap =
+                Bitmap.createScaledBitmap(
+                        b,
+                        (int) (b.getWidth() / scaleFactor),
+                        (int) (b.getHeight() / scaleFactor),
+                        true);
+        im.setImageBitmap(resizedBitmap);
+        return resizedBitmap;
+    }
+
+
+    private void runVideoProcessing(){
+
+        mCurFrame = 1;
+        final Handler mHandler = new Handler();
+        mHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                Bitmap f = mRetriever.getFrameAtTime(1000000 * mCurFrame,MediaMetadataRetriever.OPTION_NEXT_SYNC);
+                scaleAndSetBitmap(f, mRefImageView);
+
+                Bitmap maskBitmap = Bitmap.createBitmap(f, mMaskSpec[mSelectedGame][0],
+                        mMaskSpec[mSelectedGame][1], mMaskSpec[mSelectedGame][2], mMaskSpec[mSelectedGame][3]);
+                Bitmap rf = scaleAndSetBitmap(maskBitmap,mImageView);
+
+                mSelectedImage = rf;
+                runTextRecognition();
+                mCurFrame ++;
+                mHandler.postDelayed(this, 10);
+            }
+        }, 10);
+    }
+
+
 
     private void runTextRecognition() {
         InputImage image = InputImage.fromBitmap(mSelectedImage, 0);
@@ -140,23 +209,34 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
     }
 
     private void processTextRecognitionResult(Text texts) {
+        Log.e("madmachine", "Processing results");
         List<Text.TextBlock> blocks = texts.getTextBlocks();
-        if (blocks.size() == 0) {
-            showToast("No text found");
-            return;
-        }
-        mGraphicOverlay.clear();
-        for (int i = 0; i < blocks.size(); i++) {
-            List<Text.Line> lines = blocks.get(i).getLines();
-            for (int j = 0; j < lines.size(); j++) {
-                List<Text.Element> elements = lines.get(j).getElements();
-                for (int k = 0; k < elements.size(); k++) {
-                    Graphic textGraphic = new TextGraphic(mGraphicOverlay, elements.get(k));
-                    mGraphicOverlay.add(textGraphic);
+        for ( int i = 0; i < blocks.size();i++){
+            Log.e("madmachine", blocks.get(i).getText());
 
-                }
+            // blocks.get(i).getText().indexOf("m5") > 0
+
+            if(blocks.get(i).getText().indexOf("ms") > 0 ){
+                //Toast.makeText(getApplicationContext(),blocks.get(i).getText(),Toast.LENGTH_SHORT).show();
+                mPingTextView.setText("Detected Ping: "+ blocks.get(i).getText());
             }
         }
+        if (blocks.size() == 0) {
+            //showToast("No text found");
+            return;
+        }
+//        mGraphicOverlay.clear();
+//        for (int i = 0; i < blocks.size(); i++) {
+//            List<Text.Line> lines = blocks.get(i).getLines();
+//            for (int j = 0; j < lines.size(); j++) {
+//                List<Text.Element> elements = lines.get(j).getElements();
+//                for (int k = 0; k < elements.size(); k++) {
+//                    Graphic textGraphic = new TextGraphic(mGraphicOverlay, elements.get(k));
+//                    mGraphicOverlay.add(textGraphic);
+//
+//                }
+//            }
+//        }
     }
 
     private void runFaceContourDetection() {
@@ -255,35 +335,29 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
         mGraphicOverlay.clear();
         switch (position) {
             case 0:
-                mSelectedImage = getBitmapFromAsset(this, "Please_walk_on_the_grass.jpg");
+                //mSelectedImage = getBitmapFromAsset(this, "Please_walk_on_the_grass.jpg");
+                mSelectedImage = getBitmapFromAsset(this, "pubg_hd.png");
+
                 break;
+//            case 1:
+//                // Whatever you want to happen when the thrid item gets selected
+//                mSelectedImage = getBitmapFromAsset(this, "grace_hopper.jpg");
+//                break;
             case 1:
-                // Whatever you want to happen when the thrid item gets selected
-                mSelectedImage = getBitmapFromAsset(this, "grace_hopper.jpg");
+                mSelectedImage = getBitmapFromAsset(this, "snap_hd.png");
                 break;
+
         }
+        mSelectedGame = position;
+        mPingTextView.setText("-");
+
         if (mSelectedImage != null) {
-            // Get the dimensions of the View
-            Pair<Integer, Integer> targetedSize = getTargetedWidthHeight();
+            scaleAndSetBitmap(mSelectedImage, mRefImageView);
 
-            int targetWidth = targetedSize.first;
-            int maxHeight = targetedSize.second;
-
-            // Determine how much to scale down the image
-            float scaleFactor =
-                    Math.max(
-                            (float) mSelectedImage.getWidth() / (float) targetWidth,
-                            (float) mSelectedImage.getHeight() / (float) maxHeight);
-
-            Bitmap resizedBitmap =
-                    Bitmap.createScaledBitmap(
-                            mSelectedImage,
-                            (int) (mSelectedImage.getWidth() / scaleFactor),
-                            (int) (mSelectedImage.getHeight() / scaleFactor),
-                            true);
-
-            mImageView.setImageBitmap(resizedBitmap);
-            mSelectedImage = resizedBitmap;
+            Bitmap maskBitmap = Bitmap.createBitmap(mSelectedImage, mMaskSpec[position][0],
+                    mMaskSpec[position][1], mMaskSpec[position][2], mMaskSpec[position][3]);
+            Bitmap resizedBitmapv2 = scaleAndSetBitmap(maskBitmap,mImageView);
+            mSelectedImage = resizedBitmapv2;
         }
     }
 
